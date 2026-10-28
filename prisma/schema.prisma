@@ -1,0 +1,284 @@
+// ==============================================================================
+// SKILL FORGE — PRISMA SCHEMA (FASE 0: FUNDAÇÃO TÉCNICA)
+// ==============================================================================
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+// ------------------------------------------------------------------------------
+// Usuários & Autenticação
+// ------------------------------------------------------------------------------
+enum UserRole {
+  ADMIN
+  CREATOR
+  MEMBER
+  VIEWER
+}
+
+model User {
+  id            String      @id @default(uuid())
+  email         String      @unique
+  name          String
+  avatarUrl     String?
+  role          UserRole    @default(CREATOR)
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+
+  workspaces    WorkspaceMember[]
+  skills        Skill[]
+  versions      SkillVersion[]
+
+  @@map("users")
+}
+
+// ------------------------------------------------------------------------------
+// Workspace / Espaços de Trabalho
+// ------------------------------------------------------------------------------
+model Workspace {
+  id          String      @id @default(uuid())
+  name        String
+  slug        String      @unique
+  description String?
+  ownerId     String
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+
+  members     WorkspaceMember[]
+  skills      Skill[]
+
+  @@map("workspaces")
+}
+
+model WorkspaceMember {
+  id          String      @id @default(uuid())
+  workspaceId String
+  userId      String
+  role        UserRole    @default(MEMBER)
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+
+  workspace   Workspace   @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  user        User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, userId])
+  @@map("workspace_members")
+}
+
+// ------------------------------------------------------------------------------
+// Skills / Habilidades de IA
+// ------------------------------------------------------------------------------
+enum SkillStatus {
+  DRAFT
+  REVIEW
+  PUBLISHED
+  ARCHIVED
+}
+
+model Skill {
+  id             String          @id @default(uuid())
+  title          String
+  slug           String
+  description    String
+  category       String
+  tags           String[]        @default([])
+  targetAudience String?
+  currentVersion String          @default("1.0.0")
+  isPublic       Boolean         @default(false)
+  status         SkillStatus     @default(DRAFT)
+  workspaceId    String
+  authorId       String
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+
+  workspace      Workspace       @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  author         User            @relation(fields: [authorId], references: [id], onDelete: Restrict)
+  versions       SkillVersion[]
+  tests          SkillTest[]
+  audits         SkillAudit[]
+  exports        SkillExport[]
+  documents      KnowledgeDocument[]
+
+  @@unique([workspaceId, slug])
+  @@map("skills")
+}
+
+// ------------------------------------------------------------------------------
+// Versões de Skills
+// ------------------------------------------------------------------------------
+model SkillVersion {
+  id               String            @id @default(uuid())
+  skillId          String
+  versionNumber    String
+  changelog        String?
+  systemPrompt     String
+  userInstructions String?
+  toolsConfig      Json?
+  schemaConfig     Json?
+  metadata         Json?
+  authorId         String
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+
+  skill            Skill             @relation(fields: [skillId], references: [id], onDelete: Cascade)
+  author           User              @relation(fields: [authorId], references: [id], onDelete: Restrict)
+  testResults      SkillTestResult[]
+  audits           SkillAudit[]
+  exports          SkillExport[]
+
+  @@unique([skillId, versionNumber])
+  @@map("skill_versions")
+}
+
+// ------------------------------------------------------------------------------
+// Laboratório de Testes
+// ------------------------------------------------------------------------------
+model SkillTest {
+  id             String            @id @default(uuid())
+  skillId        String
+  name           String
+  description    String?
+  inputData      Json
+  expectedOutput Json?
+  assertions     Json?
+  isActive       Boolean           @default(true)
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
+
+  skill          Skill             @relation(fields: [skillId], references: [id], onDelete: Cascade)
+  results        SkillTestResult[]
+
+  @@map("skill_tests")
+}
+
+enum TestResultStatus {
+  PASSED
+  FAILED
+  ERROR
+  SKIPPED
+}
+
+model SkillTestResult {
+  id             String           @id @default(uuid())
+  testId         String
+  versionId      String
+  status         TestResultStatus
+  score          Float?
+  latencyMs      Int?
+  tokensUsed     Int?
+  output         Json?
+  error          String?
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+
+  test           SkillTest        @relation(fields: [testId], references: [id], onDelete: Cascade)
+  version        SkillVersion     @relation(fields: [versionId], references: [id], onDelete: Cascade)
+
+  @@map("skill_test_results")
+}
+
+// ------------------------------------------------------------------------------
+// Auditor de Skills
+// ------------------------------------------------------------------------------
+enum AuditType {
+  AUTOMATED
+  SECURITY
+  EFFICIENCY
+  MANUAL
+}
+
+model SkillAudit {
+  id              String       @id @default(uuid())
+  skillId         String
+  versionId       String
+  auditorType     AuditType    @default(AUTOMATED)
+  score           Float
+  passed          Boolean      @default(true)
+  summary         String
+  findings        Json?
+  recommendations Json?
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+
+  skill           Skill        @relation(fields: [skillId], references: [id], onDelete: Cascade)
+  version         SkillVersion @relation(fields: [versionId], references: [id], onDelete: Cascade)
+
+  @@map("skill_audits")
+}
+
+// ------------------------------------------------------------------------------
+// Exportações
+// ------------------------------------------------------------------------------
+enum ExportFormat {
+  ZIP
+  JSON
+  MARKDOWN
+  CLAUDE_SKILL
+  OPENAI_ASSISTANT
+  GEMINI_EXTENSION
+}
+
+model SkillExport {
+  id            String        @id @default(uuid())
+  skillId       String
+  versionId     String
+  format        ExportFormat  @default(ZIP)
+  fileName      String
+  fileSizeBytes Int?
+  downloadUrl   String?
+  metadata      Json?
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  skill         Skill         @relation(fields: [skillId], references: [id], onDelete: Cascade)
+  version       SkillVersion  @relation(fields: [versionId], references: [id], onDelete: Cascade)
+
+  @@map("skill_exports")
+}
+
+// ------------------------------------------------------------------------------
+// Modelos / Templates
+// ------------------------------------------------------------------------------
+model SkillTemplate {
+  id                  String       @id @default(uuid())
+  title               String
+  slug                String       @unique
+  description         String
+  category            String
+  icon                String?
+  targetFormat        ExportFormat @default(ZIP)
+  defaultPrompt       String
+  defaultInstructions String?
+  toolsSample         Json?
+  tags                String[]     @default([])
+  isFeatured          Boolean      @default(false)
+  createdAt           DateTime     @default(now())
+  updatedAt           DateTime     @updatedAt
+
+  @@map("skill_templates")
+}
+
+// ------------------------------------------------------------------------------
+// Documentos de Conhecimento
+// ------------------------------------------------------------------------------
+model KnowledgeDocument {
+  id             String      @id @default(uuid())
+  skillId        String
+  title          String
+  fileName       String
+  fileType       String
+  fileSize       Int
+  contentSnippet String?
+  storagePath    String
+  createdAt      DateTime    @default(now())
+  updatedAt      DateTime    @updatedAt
+
+  skill          Skill       @relation(fields: [skillId], references: [id], onDelete: Cascade)
+
+  @@map("knowledge_documents")
+}

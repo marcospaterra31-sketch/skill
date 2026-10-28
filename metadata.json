@@ -1,0 +1,6 @@
+{
+  "name": "Skill Forge",
+  "description": "Plataforma profissional para criação, teste, auditoria, versionamento e exportação de Skills para Inteligências Artificiais.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
